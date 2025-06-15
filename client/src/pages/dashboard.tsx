@@ -3,8 +3,9 @@ import { MetricsCards } from "@/components/metrics-cards";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Bell, Plus, User, RotateCcw, Mail, Phone } from "lucide-react";
+import { Bell, Plus, User, RotateCcw, Mail, Phone, Wifi, WifiOff } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useRealtime } from "@/hooks/use-realtime";
 import { Link } from "wouter";
 
 interface RecentSubscription {
@@ -40,6 +41,8 @@ interface PlanDistribution {
 }
 
 export default function Dashboard() {
+  const { isConnected, lastEvent } = useRealtime();
+  
   const { data: recentSubscriptions, isLoading: loadingSubscriptions } = useQuery<RecentSubscription[]>({
     queryKey: ["/api/subscriptions/recent"],
   });
@@ -85,6 +88,21 @@ export default function Dashboard() {
               <p className="text-gray-600">Welcome back! Here's what's happening with your subscriptions today.</p>
             </div>
             <div className="flex items-center space-x-4">
+              {/* Real-time Status Indicator */}
+              <div className="flex items-center space-x-2">
+                {isConnected ? (
+                  <div className="flex items-center text-green-600">
+                    <Wifi size={16} className="mr-1" />
+                    <span className="text-sm font-medium">Live</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center text-gray-400">
+                    <WifiOff size={16} className="mr-1" />
+                    <span className="text-sm font-medium">Offline</span>
+                  </div>
+                )}
+              </div>
+              
               <button className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
                 <Bell size={20} />
                 <span className="absolute -top-1 -right-1 w-3 h-3 bg-destructive rounded-full"></span>

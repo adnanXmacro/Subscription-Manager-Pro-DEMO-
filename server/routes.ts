@@ -267,7 +267,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Broadcast real-time update
           broadcastUpdate('invoice_paid', {
             amount: invoice.amount_paid / 100,
-            subscriptionId: invoice.subscription,
+            invoiceId: invoice.id,
             customerId: invoice.customer,
           });
           break;
