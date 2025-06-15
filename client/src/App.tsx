@@ -9,6 +9,7 @@ import Plans from "@/pages/plans";
 import Billing from "@/pages/billing";
 import Analytics from "@/pages/analytics";
 import Subscribe from "@/pages/subscribe";
+import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -19,6 +20,7 @@ function Router() {
       <Route path="/plans" component={Plans} />
       <Route path="/billing" component={Billing} />
       <Route path="/analytics" component={Analytics} />
+      <Route path="/settings" component={Settings} />
       <Route path="/subscribe/:planId" component={Subscribe} />
       <Route component={NotFound} />
     </Switch>
