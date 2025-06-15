@@ -62,7 +62,7 @@ export function Sidebar() {
 
       {/* User Profile */}
       <div className="p-4 border-t border-gray-200">
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-3 mb-3">
           <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
             <User className="text-gray-600 text-sm" size={16} />
           </div>
@@ -73,6 +73,11 @@ export function Sidebar() {
           <button className="text-gray-400 hover:text-gray-600">
             <MoreHorizontal size={16} />
           </button>
+        </div>
+        
+        {/* Branding */}
+        <div className="text-center">
+          <p className="text-xs text-gray-400 font-medium">By Adnan POS</p>
         </div>
       </div>
     </aside>

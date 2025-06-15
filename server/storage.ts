@@ -130,6 +130,8 @@ export class MemStorage implements IStorage {
     const user: User = { 
       ...insertUser, 
       id,
+      stripeCustomerId: insertUser.stripeCustomerId || null,
+      stripeSubscriptionId: insertUser.stripeSubscriptionId || null,
       createdAt: new Date(),
     };
     this.users.set(id, user);
@@ -162,6 +164,10 @@ export class MemStorage implements IStorage {
     const plan: SubscriptionPlan = {
       ...insertPlan,
       id,
+      description: insertPlan.description || null,
+      features: insertPlan.features || [],
+      stripePriceId: insertPlan.stripePriceId || null,
+      isActive: insertPlan.isActive !== undefined ? insertPlan.isActive : true,
       createdAt: new Date(),
     };
     this.subscriptionPlans.set(id, plan);
@@ -188,7 +194,7 @@ export class MemStorage implements IStorage {
 
   async getSubscriptions(): Promise<(Subscription & { user: User; plan: SubscriptionPlan })[]> {
     const result = [];
-    for (const subscription of this.subscriptions.values()) {
+    for (const subscription of Array.from(this.subscriptions.values())) {
       const user = this.users.get(subscription.userId);
       const plan = this.subscriptionPlans.get(subscription.planId);
       if (user && plan) {
@@ -200,7 +206,7 @@ export class MemStorage implements IStorage {
 
   async getUserSubscriptions(userId: number): Promise<(Subscription & { plan: SubscriptionPlan })[]> {
     const result = [];
-    for (const subscription of this.subscriptions.values()) {
+    for (const subscription of Array.from(this.subscriptions.values())) {
       if (subscription.userId === userId) {
         const plan = this.subscriptionPlans.get(subscription.planId);
         if (plan) {
@@ -229,6 +235,10 @@ export class MemStorage implements IStorage {
     const subscription: Subscription = {
       ...insertSubscription,
       id,
+      stripeSubscriptionId: insertSubscription.stripeSubscriptionId || null,
+      currentPeriodStart: insertSubscription.currentPeriodStart || null,
+      currentPeriodEnd: insertSubscription.currentPeriodEnd || null,
+      cancelledAt: insertSubscription.cancelledAt || null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -251,7 +261,7 @@ export class MemStorage implements IStorage {
 
   async getPaymentIssues(): Promise<(PaymentIssue & { user: User; subscription: Subscription })[]> {
     const result = [];
-    for (const issue of this.paymentIssues.values()) {
+    for (const issue of Array.from(this.paymentIssues.values())) {
       const user = this.users.get(issue.userId);
       const subscription = this.subscriptions.get(issue.subscriptionId);
       if (user && subscription) {
@@ -266,6 +276,8 @@ export class MemStorage implements IStorage {
     const issue: PaymentIssue = {
       ...insertIssue,
       id,
+      retryDate: insertIssue.retryDate || null,
+      resolvedAt: insertIssue.resolvedAt || null,
       createdAt: new Date(),
     };
     this.paymentIssues.set(id, issue);
