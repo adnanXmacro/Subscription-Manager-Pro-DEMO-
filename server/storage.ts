@@ -12,6 +12,8 @@ import {
   type PaymentIssue,
   type InsertPaymentIssue
 } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
   // User methods
@@ -49,277 +51,225 @@ export interface IStorage {
   }>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private subscriptionPlans: Map<number, SubscriptionPlan>;
-  private subscriptions: Map<number, Subscription>;
-  private paymentIssues: Map<number, PaymentIssue>;
-  private currentUserId: number;
-  private currentPlanId: number;
-  private currentSubscriptionId: number;
-  private currentPaymentIssueId: number;
-
+export class DatabaseStorage implements IStorage {
   constructor() {
-    this.users = new Map();
-    this.subscriptionPlans = new Map();
-    this.subscriptions = new Map();
-    this.paymentIssues = new Map();
-    this.currentUserId = 1;
-    this.currentPlanId = 1;
-    this.currentSubscriptionId = 1;
-    this.currentPaymentIssueId = 1;
-
-    // Initialize with default plans
+    // Initialize with default plans if needed
     this.initializeDefaultPlans();
   }
 
-  private initializeDefaultPlans() {
-    const defaultPlans = [
-      {
-        name: "Basic Plan",
-        description: "Perfect for small teams and individuals",
-        price: "29",
-        billingCycle: "monthly",
-        features: ["Up to 5 team members", "Basic analytics", "Email support"],
-        isActive: true,
-      },
-      {
-        name: "Professional",
-        description: "Advanced features for growing businesses",
-        price: "99",
-        billingCycle: "monthly",
-        features: ["Up to 25 team members", "Advanced analytics", "Priority support"],
-        isActive: true,
-      },
-      {
-        name: "Enterprise",
-        description: "Complete solution for large organizations",
-        price: "299",
-        billingCycle: "monthly",
-        features: ["Unlimited team members", "Custom integrations", "Dedicated support"],
-        isActive: true,
-      },
-    ];
+  private async initializeDefaultPlans() {
+    try {
+      const existingPlans = await db.select().from(subscriptionPlans);
+      if (existingPlans.length === 0) {
+        const defaultPlans = [
+          {
+            name: "Basic Plan",
+            description: "Perfect for small teams and individuals",
+            price: "29",
+            billingCycle: "monthly",
+            features: ["Up to 5 team members", "Basic analytics", "Email support"],
+            isActive: true,
+          },
+          {
+            name: "Professional",
+            description: "Advanced features for growing businesses",
+            price: "99",
+            billingCycle: "monthly",
+            features: ["Up to 25 team members", "Advanced analytics", "Priority support"],
+            isActive: true,
+          },
+          {
+            name: "Enterprise",
+            description: "Complete solution for large organizations",
+            price: "299",
+            billingCycle: "monthly",
+            features: ["Unlimited team members", "Custom integrations", "Dedicated support"],
+            isActive: true,
+          },
+        ];
 
-    defaultPlans.forEach(plan => {
-      const id = this.currentPlanId++;
-      const planData: SubscriptionPlan = {
-        id,
-        ...plan,
-        stripePriceId: null,
-        createdAt: new Date(),
-      };
-      this.subscriptionPlans.set(id, planData);
-    });
+        for (const plan of defaultPlans) {
+          await db.insert(subscriptionPlans).values({
+            ...plan,
+            stripePriceId: null,
+          });
+        }
+      }
+    } catch (error) {
+      console.warn('Could not initialize default plans:', error);
+    }
   }
 
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.username === username);
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.email === email);
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentUserId++;
-    const user: User = { 
-      ...insertUser, 
-      id,
-      stripeCustomerId: insertUser.stripeCustomerId || null,
-      stripeSubscriptionId: insertUser.stripeSubscriptionId || null,
-      createdAt: new Date(),
-    };
-    this.users.set(id, user);
+    const [user] = await db
+      .insert(users)
+      .values(insertUser)
+      .returning();
     return user;
   }
 
   async updateUserStripeInfo(userId: number, stripeCustomerId: string, stripeSubscriptionId?: string): Promise<User> {
-    const user = this.users.get(userId);
-    if (!user) throw new Error("User not found");
+    const [user] = await db
+      .update(users)
+      .set({
+        stripeCustomerId,
+        stripeSubscriptionId: stripeSubscriptionId || null
+      })
+      .where(eq(users.id, userId))
+      .returning();
     
-    const updatedUser = { 
-      ...user, 
-      stripeCustomerId,
-      stripeSubscriptionId: stripeSubscriptionId || user.stripeSubscriptionId
-    };
-    this.users.set(userId, updatedUser);
-    return updatedUser;
+    if (!user) throw new Error("User not found");
+    return user;
   }
 
   async getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
-    return Array.from(this.subscriptionPlans.values()).filter(plan => plan.isActive);
+    return await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.isActive, true));
   }
 
   async getSubscriptionPlan(id: number): Promise<SubscriptionPlan | undefined> {
-    return this.subscriptionPlans.get(id);
+    const [plan] = await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.id, id));
+    return plan || undefined;
   }
 
   async createSubscriptionPlan(insertPlan: InsertSubscriptionPlan): Promise<SubscriptionPlan> {
-    const id = this.currentPlanId++;
-    const plan: SubscriptionPlan = {
-      ...insertPlan,
-      id,
-      description: insertPlan.description || null,
-      features: insertPlan.features || [],
-      stripePriceId: insertPlan.stripePriceId || null,
-      isActive: insertPlan.isActive !== undefined ? insertPlan.isActive : true,
-      createdAt: new Date(),
-    };
-    this.subscriptionPlans.set(id, plan);
+    const [plan] = await db
+      .insert(subscriptionPlans)
+      .values(insertPlan)
+      .returning();
     return plan;
   }
 
   async updateSubscriptionPlan(id: number, planUpdate: Partial<InsertSubscriptionPlan>): Promise<SubscriptionPlan | undefined> {
-    const plan = this.subscriptionPlans.get(id);
-    if (!plan) return undefined;
-
-    const updatedPlan = { ...plan, ...planUpdate };
-    this.subscriptionPlans.set(id, updatedPlan);
-    return updatedPlan;
+    const [plan] = await db
+      .update(subscriptionPlans)
+      .set(planUpdate)
+      .where(eq(subscriptionPlans.id, id))
+      .returning();
+    return plan || undefined;
   }
 
   async deleteSubscriptionPlan(id: number): Promise<boolean> {
-    const plan = this.subscriptionPlans.get(id);
-    if (!plan) return false;
-
-    const updatedPlan = { ...plan, isActive: false };
-    this.subscriptionPlans.set(id, updatedPlan);
-    return true;
+    const [plan] = await db
+      .update(subscriptionPlans)
+      .set({ isActive: false })
+      .where(eq(subscriptionPlans.id, id))
+      .returning();
+    return !!plan;
   }
 
   async getSubscriptions(): Promise<(Subscription & { user: User; plan: SubscriptionPlan })[]> {
-    const result = [];
-    for (const subscription of Array.from(this.subscriptions.values())) {
-      const user = this.users.get(subscription.userId);
-      const plan = this.subscriptionPlans.get(subscription.planId);
-      if (user && plan) {
-        result.push({ ...subscription, user, plan });
-      }
-    }
-    return result;
+    return await db.query.subscriptions.findMany({
+      with: {
+        user: true,
+        plan: true,
+      },
+    });
   }
 
   async getUserSubscriptions(userId: number): Promise<(Subscription & { plan: SubscriptionPlan })[]> {
-    const result = [];
-    for (const subscription of Array.from(this.subscriptions.values())) {
-      if (subscription.userId === userId) {
-        const plan = this.subscriptionPlans.get(subscription.planId);
-        if (plan) {
-          result.push({ ...subscription, plan });
-        }
-      }
-    }
-    return result;
+    return await db.query.subscriptions.findMany({
+      where: eq(subscriptions.userId, userId),
+      with: {
+        plan: true,
+      },
+    });
   }
 
   async getSubscription(id: number): Promise<(Subscription & { user: User; plan: SubscriptionPlan }) | undefined> {
-    const subscription = this.subscriptions.get(id);
-    if (!subscription) return undefined;
-
-    const user = this.users.get(subscription.userId);
-    const plan = this.subscriptionPlans.get(subscription.planId);
-    
-    if (user && plan) {
-      return { ...subscription, user, plan };
-    }
-    return undefined;
+    const subscription = await db.query.subscriptions.findFirst({
+      where: eq(subscriptions.id, id),
+      with: {
+        user: true,
+        plan: true,
+      },
+    });
+    return subscription || undefined;
   }
 
   async createSubscription(insertSubscription: InsertSubscription): Promise<Subscription> {
-    const id = this.currentSubscriptionId++;
-    const subscription: Subscription = {
-      ...insertSubscription,
-      id,
-      stripeSubscriptionId: insertSubscription.stripeSubscriptionId || null,
-      currentPeriodStart: insertSubscription.currentPeriodStart || null,
-      currentPeriodEnd: insertSubscription.currentPeriodEnd || null,
-      cancelledAt: insertSubscription.cancelledAt || null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    this.subscriptions.set(id, subscription);
+    const [subscription] = await db
+      .insert(subscriptions)
+      .values(insertSubscription)
+      .returning();
     return subscription;
   }
 
   async updateSubscription(id: number, subscriptionUpdate: Partial<InsertSubscription>): Promise<Subscription | undefined> {
-    const subscription = this.subscriptions.get(id);
-    if (!subscription) return undefined;
-
-    const updatedSubscription = { 
-      ...subscription, 
-      ...subscriptionUpdate,
-      updatedAt: new Date(),
-    };
-    this.subscriptions.set(id, updatedSubscription);
-    return updatedSubscription;
+    const [subscription] = await db
+      .update(subscriptions)
+      .set({ ...subscriptionUpdate, updatedAt: new Date() })
+      .where(eq(subscriptions.id, id))
+      .returning();
+    return subscription || undefined;
   }
 
   async getPaymentIssues(): Promise<(PaymentIssue & { user: User; subscription: Subscription })[]> {
-    const result = [];
-    for (const issue of Array.from(this.paymentIssues.values())) {
-      const user = this.users.get(issue.userId);
-      const subscription = this.subscriptions.get(issue.subscriptionId);
-      if (user && subscription) {
-        result.push({ ...issue, user, subscription });
-      }
-    }
-    return result;
+    return await db.query.paymentIssues.findMany({
+      with: {
+        user: true,
+        subscription: true,
+      },
+    });
   }
 
   async createPaymentIssue(insertIssue: InsertPaymentIssue): Promise<PaymentIssue> {
-    const id = this.currentPaymentIssueId++;
-    const issue: PaymentIssue = {
-      ...insertIssue,
-      id,
-      retryDate: insertIssue.retryDate || null,
-      resolvedAt: insertIssue.resolvedAt || null,
-      createdAt: new Date(),
-    };
-    this.paymentIssues.set(id, issue);
+    const [issue] = await db
+      .insert(paymentIssues)
+      .values(insertIssue)
+      .returning();
     return issue;
   }
 
   async resolvePaymentIssue(id: number): Promise<PaymentIssue | undefined> {
-    const issue = this.paymentIssues.get(id);
-    if (!issue) return undefined;
-
-    const resolvedIssue = {
-      ...issue,
-      status: "resolved" as const,
-      resolvedAt: new Date(),
-    };
-    this.paymentIssues.set(id, resolvedIssue);
-    return resolvedIssue;
+    const [issue] = await db
+      .update(paymentIssues)
+      .set({
+        status: "resolved",
+        resolvedAt: new Date(),
+      })
+      .where(eq(paymentIssues.id, id))
+      .returning();
+    return issue || undefined;
   }
 
   async getDashboardMetrics() {
-    const subscriptions = Array.from(this.subscriptions.values());
-    const plans = Array.from(this.subscriptionPlans.values());
-    const issues = Array.from(this.paymentIssues.values());
+    const allSubscriptions = await db.select().from(subscriptions);
+    const allPlans = await db.select().from(subscriptionPlans);
+    const allIssues = await db.select().from(paymentIssues);
 
-    const activeSubscriptions = subscriptions.filter(s => s.status === 'active').length;
+    const activeSubscriptions = allSubscriptions.filter(s => s.status === 'active').length;
     
     // Calculate total revenue from active subscriptions
     let totalRevenue = 0;
-    for (const subscription of subscriptions) {
+    for (const subscription of allSubscriptions) {
       if (subscription.status === 'active') {
-        const plan = plans.find(p => p.id === subscription.planId);
+        const plan = allPlans.find(p => p.id === subscription.planId);
         if (plan) {
           totalRevenue += parseFloat(plan.price);
         }
       }
     }
 
-    const failedPayments = issues.filter(i => i.status === 'pending').length;
+    const failedPayments = allIssues.filter(i => i.status === 'pending').length;
     
     // Simple churn rate calculation (could be more sophisticated)
-    const cancelledSubscriptions = subscriptions.filter(s => s.status === 'cancelled').length;
-    const totalSubscriptions = subscriptions.length || 1;
+    const cancelledSubscriptions = allSubscriptions.filter(s => s.status === 'cancelled').length;
+    const totalSubscriptions = allSubscriptions.length || 1;
     const churnRate = (cancelledSubscriptions / totalSubscriptions) * 100;
 
     return {
@@ -331,4 +281,4 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
